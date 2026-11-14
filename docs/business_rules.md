@@ -1,21 +1,29 @@
-# Business rules (v1, based on docs/source_profile.md)
+# Business rules (v2, validated against docs/rule_checks.md on 2026-11-14)
 
-| # | Observation (from profile) | Rule | Layer |
+| # | Evidence | Rule | Layer |
 |---|---|---|---|
-| R1 | 34,335 fully duplicated rows (3.2%) | Land all rows in Bronze with a `row_hash`. Silver keeps one row per hash. Duplicates counted in the audit log, not silently dropped. Caveat: identical lines on one invoice can be genuine repeat scans, so review a sample before finalising. | Bronze/Silver |
-| R2 | 19,494 rows on `C` invoices | `is_cancellation = true`. Kept in `fact_sales`, reported as a separate measure (returns), never netted away silently. | Silver |
-| R3 | 22,950 rows with Quantity <= 0, more than the C rows | The extra non-C rows are likely stock adjustments or write-offs. Set `is_adjustment = true` and exclude them from revenue and units sold. Verify by querying non-C rows with Quantity <= 0. | Silver |
-| R4 | 6,207 rows with Price <= 0 | Flag `is_zero_price`. Exclude from revenue. Keep for data-quality reporting. | Silver |
-| R5 | 243,007 rows (22.77%) with null Customer ID | Keep in sales and order totals. Exclude from customer metrics (repeat rate, LTV). Surrogate `customer_key = -1` ("Guest/Unknown"). | Gold |
-| R6 | 4,382 null Descriptions (0.41%) | Keep the row. Take the product name from another row with the same StockCode where possible, else "Unknown". | Silver |
-| R7 | Non-product StockCodes (e.g. POST, M, DOT, BANK CHARGES) | Check with a query for non-numeric-pattern StockCodes. Flag `is_non_product`. Exclude from product rankings. | Silver |
-| R8 | Customer ID read as text | Normalise (strip a trailing `.0`) in staging so it joins cleanly. | Staging |
+| R1 | 34,335 extra duplicate rows across 5,391 invoices. Sample shows identical lines (same invoice, timestamp, product, price) repeated 2-3 times. | Cannot be proven as errors vs genuine repeat scans. Assumption: treat as duplicates. Land all rows in Bronze with `row_hash` + `row_num_in_hash`. Silver drops repeats via a dbt var `dedupe_exact_rows` (default true). Report revenue with and without dedupe and state the difference in the dashboard notes. | Bronze/Silver |
+| R2 | 19,494 `C` invoice rows; 19,493 have Quantity < 0, 1 has Quantity >= 0. | `is_cancellation = Invoice starts with 'C'`. Kept in `fact_sales`, reported as returns, not netted silently. The 1 anomaly row goes to a `dq_exceptions` table. | Silver |
+| R3 | 3,457 non-C rows with Quantity <= 0: all Price 0, all no Customer ID, descriptions like damaged, missing, check, smashed, thrown away. | Confirmed as stock write-offs. `is_adjustment = true`. Excluded from revenue and units sold. Reported separately as stock loss rows. | Silver |
+| R4 | 6,207 rows with Price <= 0: 3,457 are the R3 rows, 5 are negative "Adjust bad debt", the remainder (about 2,745, to verify) are free or zero-priced lines. | Price < 0 is a finance adjustment (`is_adjustment`). Price = 0 sets `is_zero_price`. Both excluded from revenue. | Silver |
+| R5 | 22.77% null Customer ID. | Keep in sales and order totals. Exclude from customer metrics. `customer_key = -1` for unknown. | Gold |
+| R6 | 4,382 null Descriptions, mostly the R3 rows (2,689). | Fill from another row with the same StockCode, else "Unknown". Nulls outside R3 should be near zero. | Silver |
+| R7 | 63 non-standard StockCodes, 6,094 rows. | Seed table `ref_stockcode_class` (below). Non-product rows excluded from product rankings. Postage and fees reported as a separate revenue line. | Silver |
+| R8 | Customer ID read as text. | Strip trailing `.0`. | Staging |
 
-Revenue = Quantity x Price for rows that are not cancellations, adjustments, zero-price or non-product.
-Return value = the same calculation for `C` invoices, reported as a positive amount.
+## ref_stockcode_class (seed, review before Phase 4)
+| StockCode | Class |
+|---|---|
+| POST, DOT, C2 | postage / carriage |
+| M | manual entry |
+| D | discount |
+| S | samples |
+| BANK CHARGES, AMAZONFEE | fees |
+| ADJUST, B | adjustment |
+| CRUK | charity |
+| TEST001 | test (exclude entirely) |
+| gift_0001_* | gift voucher |
+| DCGS*, PADS | probably real products, keep (verify) |
 
-## Open checks before Phase 4
-1. Are all `C` rows Quantity < 0? (expected yes)
-2. What do the non-C, Quantity <= 0 rows look like (Price, Customer ID, Description)?
-3. List StockCodes not matching `^\d{5}[A-Za-z]*$`.
-4. Sample the duplicate rows.
+Revenue = Quantity x Price for rows that are not cancellations, adjustments, zero-price, non-product or test.
+Return value = same calculation on `C` invoices, shown as a positive amount.
