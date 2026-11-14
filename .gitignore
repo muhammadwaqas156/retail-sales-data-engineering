@@ -1,0 +1,25 @@
+# Secrets
+.env
+*.pem
+*.key
+profiles.yml
+
+# Data (never commit raw or private datasets)
+data/*
+!data/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# dbt / Airflow
+dbt/**/target/
+dbt/**/dbt_packages/
+dbt/**/logs/
+airflow/logs/
+
+# IDE / OS
+.vscode/
+.DS_Store
