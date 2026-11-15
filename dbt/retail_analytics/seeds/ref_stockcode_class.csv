@@ -1,0 +1,13 @@
+stock_code,product_class
+POST,postage
+DOT,postage
+C2,postage
+M,manual
+D,discount
+S,samples
+BANK CHARGES,fees
+AMAZONFEE,fees
+ADJUST,adjustment
+B,adjustment
+CRUK,charity
+TEST001,test

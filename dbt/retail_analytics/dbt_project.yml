@@ -1,0 +1,23 @@
+name: retail_analytics
+version: "1.0.0"
+config-version: 2
+profile: retail_analytics
+
+vars:
+  dedupe_exact_rows: true   # business rule R1; set false to compare revenue without dedupe
+
+models:
+  retail_analytics:
+    staging:
+      +materialized: view
+      +schema: silver
+    intermediate:
+      +materialized: table
+      +schema: silver
+    marts:
+      +materialized: table
+      +schema: gold
+
+seeds:
+  retail_analytics:
+    +schema: silver

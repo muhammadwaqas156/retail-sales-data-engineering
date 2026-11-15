@@ -1,0 +1,12 @@
+version: 2
+sources:
+  - name: bronze
+    schema: BRONZE
+    tables:
+      - name: raw_transactions
+        columns:
+          - name: invoice
+            tests: [not_null]
+      - name: raw_products
+      - name: raw_carts
+      - name: raw_users
