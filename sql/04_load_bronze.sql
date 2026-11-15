@@ -12,32 +12,35 @@ COPY INTO RAW_TRANSACTIONS
 FROM (SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9, metadata$filename, metadata$file_row_number
       FROM @STG_RAW/transactions/)
 FILE_FORMAT = (FORMAT_NAME = FF_CSV) PATTERN = '.*[.]csv[.]gz' ON_ERROR = ABORT_STATEMENT;
--- Audit the COPY result (skip this INSERT if the result says "0 files processed")
-INSERT INTO LOAD_AUDIT (batch_id, source, file_name, status, rows_parsed, rows_loaded, errors_seen, first_error)
-  SELECT $batch_id, 'transactions', "file", "status", "rows_parsed", "rows_loaded", "errors_seen", "first_error"
-  FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
 
--- 2. JSON sources (repeat for carts, users)
+-- 2. JSON sources
 COPY INTO RAW_PRODUCTS (record, _source_file, _file_row_number)
 FROM (SELECT $1, metadata$filename, metadata$file_row_number FROM @STG_RAW/products/)
 FILE_FORMAT = (FORMAT_NAME = FF_NDJSON) ON_ERROR = ABORT_STATEMENT;
-INSERT INTO LOAD_AUDIT (batch_id, source, file_name, status, rows_parsed, rows_loaded, errors_seen, first_error)
-  SELECT $batch_id, 'products', "file", "status", "rows_parsed", "rows_loaded", "errors_seen", "first_error"
-  FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
 
 COPY INTO RAW_CARTS (record, _source_file, _file_row_number)
 FROM (SELECT $1, metadata$filename, metadata$file_row_number FROM @STG_RAW/carts/)
 FILE_FORMAT = (FORMAT_NAME = FF_NDJSON) ON_ERROR = ABORT_STATEMENT;
-INSERT INTO LOAD_AUDIT (batch_id, source, file_name, status, rows_parsed, rows_loaded, errors_seen, first_error)
-  SELECT $batch_id, 'carts', "file", "status", "rows_parsed", "rows_loaded", "errors_seen", "first_error"
-  FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
 
 COPY INTO RAW_USERS (record, _source_file, _file_row_number)
 FROM (SELECT $1, metadata$filename, metadata$file_row_number FROM @STG_RAW/users/)
 FILE_FORMAT = (FORMAT_NAME = FF_NDJSON) ON_ERROR = ABORT_STATEMENT;
+
+-- Audit: one insert from Snowflake's own load history, only for files loaded since the last audit row.
+-- On a repeat run nothing new was loaded, so zero rows are inserted (no error).
 INSERT INTO LOAD_AUDIT (batch_id, source, file_name, status, rows_parsed, rows_loaded, errors_seen, first_error)
-  SELECT $batch_id, 'users', "file", "status", "rows_parsed", "rows_loaded", "errors_seen", "first_error"
-  FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+WITH hist AS (
+  SELECT 'transactions' AS source, * FROM TABLE(INFORMATION_SCHEMA.COPY_HISTORY(TABLE_NAME=>'RAW_TRANSACTIONS', START_TIME=>DATEADD(hour,-6,CURRENT_TIMESTAMP())))
+  UNION ALL
+  SELECT 'products', * FROM TABLE(INFORMATION_SCHEMA.COPY_HISTORY(TABLE_NAME=>'RAW_PRODUCTS', START_TIME=>DATEADD(hour,-6,CURRENT_TIMESTAMP())))
+  UNION ALL
+  SELECT 'carts', * FROM TABLE(INFORMATION_SCHEMA.COPY_HISTORY(TABLE_NAME=>'RAW_CARTS', START_TIME=>DATEADD(hour,-6,CURRENT_TIMESTAMP())))
+  UNION ALL
+  SELECT 'users', * FROM TABLE(INFORMATION_SCHEMA.COPY_HISTORY(TABLE_NAME=>'RAW_USERS', START_TIME=>DATEADD(hour,-6,CURRENT_TIMESTAMP())))
+)
+SELECT $batch_id, source, file_name, status, row_parsed, row_count, error_count, first_error_message
+FROM hist
+WHERE last_load_time > COALESCE((SELECT MAX(loaded_at) FROM LOAD_AUDIT), '1970-01-01'::TIMESTAMP_LTZ);
 
 -- Stamp the batch id on newly landed rows
 UPDATE RAW_TRANSACTIONS SET _batch_id = $batch_id WHERE _batch_id IS NULL;
