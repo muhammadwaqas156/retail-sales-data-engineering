@@ -1,0 +1,15 @@
+-- Run AFTER creating the AWS IAM role (see docs/snowflake_setup.md, step A).
+-- Replace the two placeholders locally. Do NOT commit real ARNs/account IDs.
+USE ROLE ACCOUNTADMIN;
+
+CREATE STORAGE INTEGRATION IF NOT EXISTS S3_RETAIL_INT
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = 'S3'
+  ENABLED = TRUE
+  STORAGE_AWS_ROLE_ARN = '<YOUR_ROLE_ARN>'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://<YOUR_BUCKET>/raw/');
+
+-- Copy STORAGE_AWS_IAM_USER_ARN and STORAGE_AWS_EXTERNAL_ID from this output into the AWS role trust policy (step B).
+DESC INTEGRATION S3_RETAIL_INT;
+
+GRANT USAGE ON INTEGRATION S3_RETAIL_INT TO ROLE RETAIL_ROLE;
