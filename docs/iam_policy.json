@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BucketLocation",
+      "Effect": "Allow",
+      "Action": "s3:GetBucketLocation",
+      "Resource": "arn:aws:s3:::retail-de-waqas-1"
+    },
+    {
+      "Sid": "ListRawAndArchive",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::retail-de-waqas-1",
+      "Condition": {"StringLike": {"s3:prefix": ["raw/*", "archive/*"]}}
+    },
+    {
+      "Sid": "ReadWriteRawAndArchive",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::retail-de-waqas-1/raw/*",
+        "arn:aws:s3:::retail-de-waqas-1/archive/*"
+      ]
+    }
+  ]
+}
