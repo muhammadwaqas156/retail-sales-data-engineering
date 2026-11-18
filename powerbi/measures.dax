@@ -1,0 +1,41 @@
+// Paste each measure into Power BI (Modeling -> New measure). Table names: fact_sales, dim_customer, dim_product, dim_date.
+// Relationships (many-to-one, single direction):
+//   fact_sales[customer_key] -> dim_customer[customer_key]
+//   fact_sales[product_key]  -> dim_product[product_key]
+//   fact_sales[invoice_date] -> dim_date[date_key]   (mark dim_date as the Date table)
+
+Gross Sales = SUM ( fact_sales[gross_sales_amount] )
+Returns = SUM ( fact_sales[return_amount] )
+Net Sales = [Gross Sales] - [Returns]
+Postage & Fees Revenue = SUM ( fact_sales[other_revenue_amount] )
+Units Sold = SUM ( fact_sales[units_sold] )
+Units Returned = SUM ( fact_sales[units_returned] )
+
+Orders =
+CALCULATE ( DISTINCTCOUNT ( fact_sales[invoice_no] ), fact_sales[is_revenue_line] = TRUE () )
+
+Average Order Value = DIVIDE ( [Gross Sales], [Orders] )
+Return Rate % = DIVIDE ( [Returns], [Gross Sales] )
+
+Known Customers =
+CALCULATE (
+    DISTINCTCOUNT ( fact_sales[customer_key] ),
+    fact_sales[is_revenue_line] = TRUE (),
+    fact_sales[customer_key] <> "-1"
+)
+
+Unknown Customer Sales % =
+DIVIDE ( CALCULATE ( [Gross Sales], fact_sales[customer_key] = "-1" ), [Gross Sales] )
+
+Repeat Customers =
+COUNTROWS (
+    FILTER (
+        VALUES ( dim_customer[customer_key] ),
+        dim_customer[customer_key] <> "-1" && [Orders] > 1
+    )
+)
+
+Repeat Customer Rate = DIVIDE ( [Repeat Customers], [Known Customers] )
+
+Gross Sales PY = CALCULATE ( [Gross Sales], SAMEPERIODLASTYEAR ( dim_date[date_key] ) )
+Gross Sales YoY % = DIVIDE ( [Gross Sales] - [Gross Sales PY], [Gross Sales PY] )
