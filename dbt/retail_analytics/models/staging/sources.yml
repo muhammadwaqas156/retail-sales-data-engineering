@@ -2,6 +2,10 @@ version: 2
 sources:
   - name: bronze
     schema: BRONZE
+    loaded_at_field: _loaded_at
+    freshness:
+      warn_after: {count: 3, period: day}
+      error_after: {count: 14, period: day}
     tables:
       - name: raw_transactions
         columns:

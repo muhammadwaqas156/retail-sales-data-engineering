@@ -2,7 +2,7 @@
 
 - UCI workbook -> one gzipped CSV (Snowflake cannot read .xlsx)
 - DummyJSON JSON -> gzipped NDJSON, sensitive fake fields removed
-- Key layout: raw/<source>/ingest_date=YYYY-MM-DD/<file>
+- Key layout: <S3_PREFIX, default raw>/<source>/ingest_date=YYYY-MM-DD/<file>
 - Idempotent: a file whose sha256 is already in the audit log is skipped
 - Audit log: data/audit/ingestion_log.jsonl (one JSON line per file)
 
@@ -66,12 +66,12 @@ def prepare_api(name: str) -> tuple[Path, int] | None:
     return out, len(records)
 
 
-def already_uploaded(sha: str) -> bool:
+def already_uploaded(sha: str, source: str) -> bool:
     if not AUDIT_LOG.exists():
         return False
     for line in AUDIT_LOG.read_text().splitlines():
         rec = json.loads(line)
-        if rec.get("sha256") == sha and rec.get("status") == "uploaded":
+        if rec.get("sha256") == sha and rec.get("source") == source and rec.get("status") == "uploaded":
             return True
     return False
 
@@ -85,10 +85,10 @@ def write_audit(rec: dict) -> None:
 def upload(s3, bucket: str, source: str, path: Path, rows: int, dry_run: bool = False) -> dict:
     now = datetime.now(timezone.utc)
     sha = sha256_file(path)
-    key = f"raw/{source}/ingest_date={now:%Y-%m-%d}/{path.name}"
+    key = f"{os.getenv('S3_PREFIX', 'raw')}/{source}/ingest_date={now:%Y-%m-%d}/{path.name}"
     rec = {"ts": now.isoformat(), "source": source, "file": path.name, "rows": rows,
            "bytes": path.stat().st_size, "sha256": sha, "s3_key": key}
-    if already_uploaded(sha):
+    if already_uploaded(sha, source):
         rec["status"] = "skipped_duplicate"
     elif dry_run:
         rec["status"] = "dry_run"
